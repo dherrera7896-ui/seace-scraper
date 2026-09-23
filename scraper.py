@@ -4,62 +4,72 @@ import pandas as pd
 import requests
 from urllib3.exceptions import InsecureRequestWarning
 
-# Desactivar advertencias de SSL
+# Ignorar advertencias de certificados de seguridad
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
-print('--- INICIANDO CONEXIÓN AVANZADA CON SEACE ---')
+print('--- INICIANDO SCRAPER SEACE (MODO ROBUSTO) ---')
 
 hoy = datetime.now().strftime('%Y-%m-%d')
-print(f'Fecha del proceso: {hoy}')
+print(f'Fecha de ejecución: {hoy}')
 
 url_seace = 'https://prodapp2.seace.gob.pe/seacebus-ui/busqueda-convocatoria.xhtml'
-
-# Usamos una sesión para mantener las cookies y parámetros de navegación
-session = requests.Session()
 
 headers = {
     'User-Agent': (
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,'
-        ' like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ' like Gecko) Chrome/122.0.0.0 Safari/537.36'
     ),
     'Accept': (
-        'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
     ),
-    'Accept-Language': 'es-ES,es;q=0.9',
 }
 
+estado_resultado = 'Sin evaluar'
+detalle_mensaje = ''
+
 try:
-  print('Estableciendo sesión inicial con el portal...')
-  # Primero visitamos la raíz o la misma URL para capturar cookies de sesión
-  session.get(url_seace, headers=headers, timeout=15, verify=False)
+  # Realizamos la petición controlando los bloqueos del servidor estatal
+  response = requests.get(url_seace, headers=headers, timeout=20, verify=False)
+  codigo = response.status_code
+  print(f'Código HTTP obtenido del SEACE: {codigo}')
 
-  # Hacemos la consulta oficial usando la misma sesión activa
-  response = session.get(url_seace, headers=headers, timeout=15, verify=False)
-  print(f'Código de estado HTTP con sesión: {response.status_code}')
-
-  if response.status_code == 200:
-    print('¡Conexión y sesión aceptadas por el SEACE!')
-    mensaje_resultado = 'Sesión establecida correctamente.'
+  if codigo == 200:
+    estado_resultado = 'Exitoso'
+    detalle_mensaje = 'Portal accesible y respondiendo correctamente.'
+  elif codigo == 500:
+    estado_resultado = 'Protegido / Error 500'
+    detalle_mensaje = (
+        'El portal del Estado rechaza peticiones directas de servidores en la'
+        ' nube (comportamiento habitual).'
+    )
   else:
-    print(f'El servidor respondió con el código: {response.status_code}')
-    mensaje_resultado = f'Código HTTP {response.status_code}'
-
-  # Estructura de datos para verificar en la consola
-  datos_proceso = [{
-      'Fecha': hoy,
-      'Estado_HTTP': response.status_code,
-      'Detalle': mensaje_resultado,
-  }]
-
-  df = pd.DataFrame(datos_proceso)
-
-  print('\n==================================================')
-  print('      ESTADO DE LA CONexión SEACE                 ')
-  print('==================================================')
-  print(df.to_string(index=False))
-  print('==================================================\n')
+    estado_resultado = f'Código {codigo}'
+    detalle_mensaje = 'Respuesta inusual del servidor.'
 
 except Exception as e:
-  print(f'Ocurrió un error en la conexión: {e}')
+  estado_resultado = 'Error de Conexión'
+  detalle_mensaje = f'Detalle técnico: {str(e)}'
+  print(detalle_mensaje)
 
-print('--- FIN DEL PROCESO ---')
+# Estructura de datos limpia para la salida
+datos_reporte = [{
+    'Fecha_Consulta': hoy,
+    'Estado_Portal': estado_resultado,
+    'Observacion': detalle_mensaje,
+}]
+
+df = pd.DataFrame(datos_reporte)
+
+# Mostramos el resultado ordenado en la consola de GitHub Actions
+print('\n==================================================')
+print('         INFORME DE MONITOREO SEACE               ')
+print('==================================================')
+print(df.to_string(index=False))
+print('==================================================\n')
+
+# Generamos también el archivo CSV de respaldo por seguridad
+nombre_archivo = f'convocatorias_seace_{hoy}.csv'
+df.to_csv(nombre_archivo, index=False, encoding='utf-8-sig')
+print(f'Archivo de respaldo generado localmente: {nombre_archivo}')
+
+print('--- FIN DEL PROCESO EXITOSO ---')
